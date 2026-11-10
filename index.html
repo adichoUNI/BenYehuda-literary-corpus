@@ -1,0 +1,786 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>דפדפן הקורפוס</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- shared by link only; keep it out of search results -->
+<meta name="robots" content="noindex, nofollow">
+<style>
+  :root {
+    --bg: #fafaf8; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6b66;
+    --line: #e4e3de; --accent: #2f5d8a; --sel: #e8f0f8; --core: #2e7d4f;
+    --warn: #b06a00; --warn-bg: #fff4e0; --ok-bg: #e8f5ec; --mark: #fde8e8; --markink: #a12b2b;
+    --removed: #fbe3e3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17171a; --panel: #1f1f23; --ink: #e9e8e4; --muted: #9a9993;
+      --line: #33333a; --accent: #8ab4dd; --sel: #26303b; --core: #7fcf9b;
+      --warn: #f0b660; --warn-bg: #3a2e1a; --ok-bg: #1d3325; --mark: #3d2222; --markink: #f19a9a;
+      --removed: #3d2424;
+    }
+  }
+  :root {
+    --s-poem: #2a78d6; --s-prose: #eb6834; --s-perm: #6250d6;
+    --grid: #ecebe7; --axis: #c3c2b7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --s-poem: #3987e5; --s-prose: #d95926; --s-perm: #9085e9;
+      --grid: #2c2c30; --axis: #45454a;
+    }
+  }
+  [hidden] { display: none !important; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.45 system-ui, "Segoe UI", Arial, sans-serif;
+    display: grid; grid-template-rows: auto 1fr;
+  }
+  header {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--panel);
+  }
+  header input[type=search] { min-width: 220px; }
+  header input, header select, header button {
+    font: inherit; padding: 4px 8px; border: 1px solid var(--line);
+    border-radius: 6px; background: var(--bg); color: var(--ink);
+  }
+  header button { cursor: pointer; }
+  header button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  #count { color: var(--muted); margin-inline-start: auto; }
+  main { display: grid; grid-template-columns: minmax(380px, 42%) 1fr; min-height: 0; }
+  #list { overflow: auto; border-inline-end: 1px solid var(--line); }
+  table { border-collapse: collapse; width: 100%; }
+  thead th {
+    position: sticky; top: 0; background: var(--panel); text-align: right;
+    font-weight: 600; font-size: 12px; color: var(--muted);
+    padding: 6px 8px; border-bottom: 1px solid var(--line); cursor: pointer; user-select: none;
+  }
+  tbody td { padding: 5px 7px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  tbody td.t, tbody td.a { white-space: normal; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--sel); }
+  tbody tr.on { background: var(--sel); outline: 2px solid var(--accent); outline-offset: -2px; }
+  tbody tr.marked td { background: var(--mark); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+  .dot.core { background: var(--core); }
+  .num { font-variant-numeric: tabular-nums; color: var(--muted); }
+  #detail { display: flex; flex-direction: column; min-height: 0; }
+  #meta { padding: 12px 16px 8px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  #meta h2 { margin: 0 0 2px; font-size: 18px; }
+  #meta .sub { color: var(--muted); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); }
+  .chip.ok { background: var(--ok-bg); border-color: transparent; }
+  .chip.warn { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+  .row input { font: inherit; padding: 3px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); }
+  .row button { font: inherit; padding: 3px 10px; border-radius: 6px; cursor: pointer; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  .row button.mark { border-color: var(--markink); color: var(--markink); }
+  .row button.mark.on { background: var(--markink); color: #fff; }
+  .row label { color: var(--muted); }
+  #panes { flex: 1; min-height: 0; display: grid; gap: 1px; background: var(--line); }
+  .pane { display: flex; flex-direction: column; min-height: 0; background: var(--panel); }
+  .pane h3 { margin: 0; padding: 6px 12px; font-size: 12px; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--line); }
+  .pane pre {
+    flex: 1; margin: 0; overflow: auto; padding: 14px 16px;
+    white-space: pre-wrap; word-wrap: break-word; direction: rtl; text-align: right;
+    font-family: "Frank Ruehl CLM", "David", "SBL Hebrew", "Times New Roman", serif;
+    font-size: var(--fs, 18px); line-height: 1.75;
+  }
+  .pane pre .rm { background: var(--removed); }
+  #empty { margin: auto; color: var(--muted); }
+  a { color: var(--accent); }
+  kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+
+  .ver { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .credit { color: var(--muted); font-size: 12px; }
+  .credit a { color: inherit; }
+  #pickerScreen { display: grid; place-items: center; padding: 24px; }
+  .pickbox { max-width: 560px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 24px 28px; }
+  .pickbox h2 { margin: 0 0 10px; }
+  .pickbox p { line-height: 1.7; }
+  .pickbtn { display: inline-block; margin: 6px 0 10px; padding: 8px 18px; border-radius: 8px;
+             background: var(--accent); color: #fff; cursor: pointer; font-weight: 600; }
+  .pmuted { color: var(--muted); font-size: 13px; }
+  .pwarn { color: var(--markink); }
+
+  /* tabs */
+  .tabs { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+  .tabs button { border: 0; background: transparent; padding: 4px 14px; border-radius: 6px; cursor: pointer; color: var(--muted); font: inherit; }
+  .tabs button.on { background: var(--panel); color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
+  .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; flex: 1; }
+
+  /* overview */
+  #overview { overflow: auto; padding: 16px; }
+  .ov-filters { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; color: var(--muted); }
+  .ov-filters select { font: inherit; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); }
+  .tiles { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 16px; min-width: 120px; }
+  .tile .l { font-size: 12px; color: var(--muted); }
+  .tile .v { font-size: 26px; font-weight: 600; line-height: 1.25; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+  .card.wide { grid-column: 1 / -1; }
+  .card h3 { margin: 0; font-size: 14px; }
+  .card .sub { margin: 2px 0 8px; color: var(--muted); font-size: 12px; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-inline-end: 5px; vertical-align: -1px; }
+  .chart svg { display: block; }
+  svg .grid { stroke: var(--grid); stroke-width: 1; }
+  svg .axis { stroke: var(--axis); stroke-width: 1; }
+  svg .target { stroke: var(--muted); stroke-width: 1; }
+  svg .tick { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  svg .vlabel { fill: var(--ink); font-size: 11px; font-weight: 600; }
+  svg .hoverband { fill: var(--sel); }
+  svg .hit { outline: none; }
+  svg .hit:focus-visible { stroke: var(--accent); stroke-width: 2; }
+  #tip {
+    position: fixed; z-index: 10; pointer-events: none; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12px;
+    box-shadow: 0 4px 14px rgba(0,0,0,.12); min-width: 140px;
+  }
+  .tip-h { color: var(--muted); margin-bottom: 4px; }
+  .tip-r { display: flex; align-items: center; gap: 6px; line-height: 1.6; }
+  .tip-r .key { width: 12px; height: 2px; border-radius: 1px; flex: none; }
+  .tip-r strong { font-size: 13px; }
+  .tip-l { color: var(--muted); }
+  .tablewrap { overflow-x: auto; }
+  #ovTable { font-variant-numeric: tabular-nums; }
+  #ovTable th { position: static; cursor: default; }
+  #ovTable td, #ovTable th { padding: 4px 10px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+  #ovTable tbody tr { cursor: default; }
+  #ovTable tbody tr:hover { background: transparent; }
+  #ovTable tfoot td { font-weight: 600; }
+  #ovTable .gsep { border-inline-start: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<header>
+  <div class="tabs" role="tablist">
+    <button data-view="browse" class="on" role="tab">דפדוף</button>
+    <button data-view="overview" role="tab">סקירה</button>
+  </div>
+  <div id="browseBar" class="bar">
+  <input type="search" id="q" placeholder="חיפוש במחבר או בכותרת">
+  <select id="fGenre"><option value="">כל הז'אנרים</option></select>
+  <select id="fDecade"><option value="">כל העשורים</option></select>
+  <select id="fCore">
+    <option value="yes">הסט הראשי (0)</option>
+    <option value="no">סטים 1–4 בלבד</option>
+    <option value="">הכל</option>
+  </select>
+  <select id="fSource"><option value="">כל המקורות</option></select>
+  <select id="fWhy"><option value="">כל הסיבות</option></select>
+  <label><input type="checkbox" id="fMarked"> רק מסומנים</label>
+  <button class="primary" id="export" title="מוריד manual_exclusions.csv הכולל את כל הסימונים">ייצוא סימונים (<span id="nMarks">0</span>)</button>
+  <span id="count"></span>
+  </div>
+  <span id="ver" class="ver"></span>
+  <span class="credit">הטקסטים מ<a href="https://benyehuda.org" target="_blank" rel="noopener">פרויקט בן-יהודה</a>. יצירות שנמסרו ברשות שייכות לבעלי הזכויות, לשימוש מחקרי בלבד.</span>
+</header>
+<section id="pickerScreen" hidden>
+  <div class="pickbox">
+    <h2>דפדפן הקורפוס</h2>
+    <p>כדי להציג את הקורפוס, בחרו את התיקייה שבה נמצא הקובץ הזה.<br>
+       זו התיקייה שנוצרה כשפרסתם את קובץ ה-zip, והיא מכילה את <code>selection.csv</code>.</p>
+    <label class="pickbtn">בחירת תיקייה<input type="file" id="dirInput" webkitdirectory multiple hidden></label>
+    <p class="pmuted">הקבצים נקראים מהמחשב שלכם בלבד. שום דבר לא נשלח לאינטרנט, גם אם הדפדפן
+       שואל אם "להעלות" את הקבצים — הכוונה רק לפתוח אותם בדף הזה.</p>
+    <p id="pickMsg" class="pwarn"></p>
+  </div>
+</section>
+<main>
+  <div id="list">
+    <table>
+      <thead><tr>
+        <th data-k="in_core"></th><th data-k="genre">ז'אנר</th><th data-k="birth_decade">עשור</th>
+        <th data-k="author">מחבר</th><th data-k="birth">לידה</th><th data-k="title">כותרת</th>
+        <th data-k="words_clean">מילים</th><th data-k="source">מקור</th><th data-k="excluded_by">סיבה</th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+  <section id="detail"><div id="empty">בחרי שורה. <kbd>↑</kbd><kbd>↓</kbd> לדפדוף, <kbd>x</kbd> לסימון להוצאה.</div></section>
+</main>
+<section id="overview" hidden>
+  <div class="ov-filters">
+    <label for="ovScope">מה לספור</label>
+    <select id="ovScope">
+      <option value="core">הסט הראשי (סט 0)</option>
+      <option value="all">כל חמשת הסטים</option>
+    </select>
+  </div>
+  <div class="tiles" id="tiles"></div>
+  <div class="cards">
+    <div class="card">
+      <h3>יצירות לפי עשור לידת המחבר</h3>
+      <p class="sub" id="countSub"></p>
+      <div class="legend"><span><i style="background:var(--s-poem)"></i>שירה</span><span><i style="background:var(--s-prose)"></i>פרוזה</span></div>
+      <div class="chart" id="chCount"></div>
+    </div>
+    <div class="card">
+      <h3>מחברים שונים לפי עשור לידה</h3>
+      <p class="sub">כמה אנשים שונים כתבו את היצירות של כל עשור</p>
+      <div class="legend"><span><i style="background:var(--s-poem)"></i>שירה</span><span><i style="background:var(--s-prose)"></i>פרוזה</span></div>
+      <div class="chart" id="chAuth"></div>
+    </div>
+    <div class="card wide">
+      <h3>שיעור היצירות שנכנסו ברשות בעלי הזכויות</h3>
+      <p class="sub" id="permSub"></p>
+      <div class="chart" id="chPerm"></div>
+    </div>
+    <div class="card wide">
+      <h3>הנתונים המלאים</h3>
+      <div class="tablewrap"><table id="ovTable"></table></div>
+    </div>
+  </div>
+</section>
+<div id="tip" role="tooltip" hidden></div>
+
+<script>
+"use strict";
+const FILES = { sel: "selection.csv", manual: "manual_exclusions.csv" };
+const LAYERS = [
+  { key: "text_file",    label: "מקור — כפי שהורד" },
+  { key: "clean_file",   label: "נקי" },
+  { key: "nonikud_file", label: "נקי, ללא ניקוד" },
+  { key: "notes_file",   label: "הערות שוליים שהוסרו" },
+];
+let ROWS = [], VIEW = [], CUR = -1, SORT = { k: null, dir: 1 };
+// short Hebrew labels for the coded columns; the CSV keeps the codes
+const SRC = { benyehuda_pd: "נחלת הכלל", benyehuda_permission: "ברשות",
+              benyehuda_copyrighted: "מוגן", benyehuda_orphan: "יצירה יתומה", benyehuda_other: "אחר" };
+const WHY = { other_sets: "בסט חלופי", juvenile: "כתיבה לילדים", paratext: "פרא־טקסט", over_length: "ארוך מדי",
+              surplus: "עודף", manual: "ידני" };
+const srcLabel = (s) => SRC[s] || s || "";
+const whyLabel = (s) => { if (!s) return ""; const [k, v] = s.split(":");
+                          return v ? `${WHY[k] || k}: ${v}` : (WHY[k] || k); };
+let show = { text_file: true, clean_file: true, nonikud_file: false };
+let marks = {};
+const textCache = new Map();
+const $ = (id) => document.getElementById(id);
+
+function store(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+function recall(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
+
+function parseCSV(text) {
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const out = []; let row = [], f = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; }
+      else f += c;
+    } else if (c === '"') q = true;
+    else if (c === ",") { row.push(f); f = ""; }
+    else if (c === "\n") { row.push(f); out.push(row); row = []; f = ""; }
+    else if (c !== "\r") f += c;
+  }
+  if (f !== "" || row.length) { row.push(f); out.push(row); }
+  const head = out.shift() || [];
+  return out.filter(r => r.length > 1).map(r => Object.fromEntries(head.map((h, j) => [h, r[j] ?? ""])));
+}
+const csvq = (s) => /[",\n]/.test(s ?? "") ? '"' + String(s).replace(/"/g, '""') + '"' : (s ?? "");
+
+// Two ways to reach the data. Served over http (browse.bat), files are fetched.
+// Opened straight from disk, browsers refuse fetch() on file://, so the reader
+// picks the folder once and the files are read through the File API — locally,
+// nothing is uploaded. LOCAL maps a relative path to its File.
+let LOCAL = null;
+async function readPath(path) {
+  if (!path) return null;
+  if (LOCAL) { const f = LOCAL.get(path); return f ? await f.text() : null; }
+  const url = path.split("/").map(encodeURIComponent).join("/");
+  try { const r = await fetch(url); return r.ok ? await r.text() : null; } catch (e) { return null; }
+}
+async function fetchText(path) {
+  if (!path) return null;
+  if (textCache.has(path)) return textCache.get(path);
+  const t = await readPath(path);
+  textCache.set(path, t);
+  return t;
+}
+
+function fillSelect(id, values, label = v => v) {
+  const s = $(id);
+  [...new Set(values)].filter(Boolean).sort((a, b) => String(a).localeCompare(String(b), "he", { numeric: true }))
+    .forEach(v => { const o = document.createElement("option"); o.value = v; o.textContent = label(v); s.appendChild(o); });
+}
+
+function applyFilters() {
+  const q = $("q").value.trim();
+  const g = $("fGenre").value, d = $("fDecade").value, c = $("fCore").value;
+  const s = $("fSource").value, w = $("fWhy").value, m = $("fMarked").checked;
+  VIEW = ROWS.filter(r =>
+    (!q || (r.author || "").includes(q) || (r.title || "").includes(q) || r.id === q) &&
+    (!g || r.genre === g) && (!d || r.birth_decade === d) && (!c || r.in_core === c) &&
+    (!s || r.source === s) && (!w || (r.excluded_by || "").split(":")[0] === w) &&
+    (!m || marks[r.id]));
+  if (SORT.k) {
+    const k = SORT.k, num = ["birth", "birth_decade", "words_clean"].includes(k);
+    VIEW.sort((a, b) => (num ? (+a[k] || 0) - (+b[k] || 0) : String(a[k]).localeCompare(String(b[k]), "he")) * SORT.dir);
+  }
+  $("count").textContent = `${VIEW.length.toLocaleString("he")} מתוך ${ROWS.length.toLocaleString("he")}`;
+  render();
+}
+
+function render() {
+  const tb = $("rows"); tb.textContent = "";
+  const frag = document.createDocumentFragment();
+  VIEW.forEach((r, i) => {
+    const tr = document.createElement("tr");
+    tr.dataset.i = i;
+    if (marks[r.id]) tr.classList.add("marked");
+    if (i === CUR) tr.classList.add("on");
+    const cells = [
+      `<span class="dot ${r.in_core === "yes" ? "core" : ""}" title="${r.in_core === "yes" ? "בסט הראשי" : "בסט חלופי"}"></span>`,
+      r.genre, r.birth_decade + "s", r.author, `<span class="num">${r.birth}</span>`,
+      null, `<span class="num">${r.words_clean || r.words}</span>`,
+      srcLabel(r.source), whyLabel(r.excluded_by)
+    ];
+    cells.forEach((v, j) => {
+      const td = document.createElement("td");
+      if (j === 5) { td.className = "t"; td.textContent = r.title; }
+      else if (j === 3) { td.className = "a"; td.textContent = v; }
+      else if (j === 0 || j === 4 || j === 6) td.innerHTML = v;
+      else td.textContent = v;
+      tr.appendChild(td);
+    });
+    frag.appendChild(tr);
+  });
+  tb.appendChild(frag);
+  $("nMarks").textContent = Object.keys(marks).length;
+}
+
+function chip(text, cls = "") { return `<span class="chip ${cls}">${text}</span>`; }
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+async function select(i, scroll = true) {
+  if (i < 0 || i >= VIEW.length) return;
+  CUR = i;
+  document.querySelectorAll("#rows tr.on").forEach(t => t.classList.remove("on"));
+  const tr = document.querySelector(`#rows tr[data-i="${i}"]`);
+  if (tr) { tr.classList.add("on"); if (scroll) tr.scrollIntoView({ block: "nearest" }); }
+  const r = VIEW[i];
+  const flags = [];
+  flags.push(r.in_core === "yes" ? chip("בסט הראשי", "ok") : chip(esc(whyLabel(r.excluded_by)), "warn"));
+  if (r.sets) flags.push(chip("סטים: " + esc(r.sets)));
+  if (r.birth_decade_v1 && r.birth_decade_v1 !== r.birth_decade) flags.push(chip(`עשור תוקן: ${esc(r.birth_decade_v1)} → ${esc(r.birth_decade)}`));
+  if (r.backfilled === "yes") flags.push(chip("נכנס כהחלפה"));
+  flags.push(chip(esc(srcLabel(r.source))));
+  if (r.is_vocalized === "yes") flags.push(chip("מנוקד"));
+  flags.push(r.stanzas_recoverable === "yes" ? chip("בתים ניתנים לזיהוי", "ok") : chip("רווחים אחידים — בתים לא ניתנים לזיהוי", "warn"));
+  if (r.title_is_first_line === "yes") flags.push(chip("הכותרת היא השורה הראשונה"));
+  if (r.byline_suspect === "yes") flags.push(chip("שורה ראשונה חשודה — לבדוק", "warn"));
+  if (r.title_deduped === "yes") flags.push(chip("כותרת כפולה תוקנה"));
+  if (r.has_footnote_marks === "yes") flags.push(chip("הערות שוליים"));
+  if (r.had_tabs === "yes") flags.push(chip("טבלה במקור", "warn"));
+  if (+r.n_footnotes) flags.push(r.notes_stripped === "stripped" || r.notes_stripped === "partial"
+      ? chip(`${esc(r.n_footnotes)} הערות שוליים הוסרו`)
+      : chip("הערות שוליים לא הוסרו — לבדוק", "warn"));
+  const m = marks[r.id];
+  const date = r.raw_pub || r.orig_pub || "";
+
+  $("detail").innerHTML = `
+    <div id="meta">
+      <h2>${esc(r.title)}</h2>
+      <div class="sub">${esc(r.author)} · נולד ${esc(r.birth)} · ${esc(r.genre)} · ${esc(r.birth_decade)}s
+        · ${esc(r.words_clean || r.words)} מילים${date ? " · " + esc(date) : ""}
+        · <a href="${esc(r.url)}" target="_blank" rel="noopener">בבן יהודה ↗</a></div>
+      <div class="chips">${flags.join("")}</div>
+      <div class="row">
+        <button class="mark ${m ? "on" : ""}" id="markBtn">${m ? "מסומן להוצאה ✓" : "סמני להוצאה"} <kbd>x</kbd></button>
+        <input id="reason" placeholder="סיבה (למשל: מסה, עיון)" value="${esc(m ? m.reason : "")}" size="22">
+        <input id="note" placeholder="הערה" value="${esc(m ? m.note : "")}" size="22">
+        <span style="flex:1"></span>
+        <label><input type="checkbox" data-l="text_file" ${show.text_file ? "checked" : ""}> מקור</label>
+        <label><input type="checkbox" data-l="clean_file" ${show.clean_file ? "checked" : ""}> נקי</label>
+        <label><input type="checkbox" data-l="nonikud_file" ${show.nonikud_file ? "checked" : ""}> ללא ניקוד</label>
+        <label><input type="checkbox" data-l="notes_file" ${show.notes_file ? "checked" : ""}> הערות${+r.n_footnotes ? " (" + esc(r.n_footnotes) + ")" : ""}</label>
+        <button id="smaller">א−</button><button id="bigger">א+</button>
+        <span class="num">id ${esc(r.id)}</span>
+      </div>
+    </div>
+    <div id="panes"></div>`;
+
+  $("markBtn").onclick = () => toggleMark(r);
+  ["reason", "note"].forEach(k => $(k).oninput = () => {
+    if (marks[r.id]) { marks[r.id][k] = $(k).value; store("by_marks", marks); }
+  });
+  document.querySelectorAll("#meta input[data-l]").forEach(cb => cb.onchange = () => {
+    show[cb.dataset.l] = cb.checked; store("by_show", show); select(CUR, false);
+  });
+  $("smaller").onclick = () => setFont(-1);
+  $("bigger").onclick = () => setFont(1);
+
+  const panes = $("panes");
+  if (r.text_public === "no") {
+    // works shown in Ben-Yehuda by permission of the rights holders: metadata and a link only
+    panes.style.gridTemplateColumns = "1fr";
+    panes.innerHTML = `<div class="pane"><h3>הטקסט אינו מוצג כאן</h3><pre>היצירה מופיעה בפרויקט בן־יהודה ברשות בעלי הזכויות,
+ולכן הטקסט שלה אינו מפורסם בקורפוס הציבורי.
+
+לקריאה בבן־יהודה: <a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.url)}</a></pre></div>`;
+    return;
+  }
+  const layers = LAYERS.filter(L => show[L.key]);
+  panes.style.gridTemplateColumns = `repeat(${Math.max(layers.length, 1)}, 1fr)`;
+  const texts = await Promise.all(layers.map(L => fetchText(r[L.key])));
+  if (VIEW[CUR] !== r) return;               // user moved on while loading
+  const cleanText = await fetchText(r.clean_file);
+  const cleanSet = new Set((cleanText || "").split("\n").map(s => s.trim()));
+  layers.forEach((L, j) => {
+    const div = document.createElement("div"); div.className = "pane";
+    const h = document.createElement("h3"); h.textContent = L.label; div.appendChild(h);
+    const pre = document.createElement("pre");
+    const t = texts[j];
+    if (L.key === "notes_file" && !r.notes_file) pre.textContent = "(אין הערות שוליים בטקסט הזה)";
+    else if (t == null) pre.textContent = "(הקובץ לא נמצא: " + r[L.key] + ")";
+    else if (L.key === "text_file") {
+      // lines the cleaning changed or removed, highlighted in the source pane
+      t.split("\n").forEach((line, k, arr) => {
+        const changed = line.trim() && !cleanSet.has(line.trim());
+        if (changed) { const s = document.createElement("span"); s.className = "rm"; s.textContent = line; pre.appendChild(s); }
+        else pre.appendChild(document.createTextNode(line));
+        if (k < arr.length - 1) pre.appendChild(document.createTextNode("\n"));
+      });
+    } else pre.textContent = t;
+    div.appendChild(pre); panes.appendChild(div);
+  });
+}
+
+function toggleMark(r) {
+  if (marks[r.id]) delete marks[r.id];
+  else marks[r.id] = { reason: ($("reason") && $("reason").value) || "", note: ($("note") && $("note").value) || "",
+                       author: r.author, title: r.title };
+  store("by_marks", marks);
+  render(); select(CUR, false);
+}
+
+function setFont(d) {
+  const cur = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--fs")) || 18;
+  const v = Math.min(30, Math.max(12, cur + d * 2));
+  document.documentElement.style.setProperty("--fs", v + "px"); store("by_fs", v);
+}
+
+function exportMarks() {
+  const lines = ["id,reason,note"].concat(Object.entries(marks).map(([id, m]) =>
+    [id, m.reason || "manual", m.note || ""].map(csvq).join(",")));
+  const blob = new Blob(["﻿" + lines.join("\r\n") + "\r\n"], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "manual_exclusions.csv"; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+// ------------------------------------------------------------- overview --
+// Everything here is computed from selection.csv at load, so after a reselect
+// and a sync, reloading the page is all it takes for the charts to follow.
+const GENRES = [
+  { key: "שירה",  label: "שירים",   color: "var(--s-poem)" },
+  { key: "פרוזה", label: "סיפורים", color: "var(--s-prose)" },
+];
+const NS = "http://www.w3.org/2000/svg";
+function svgEl(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function nice(v) {
+  if (v <= 0) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(v))), m = v / p;
+  return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p;
+}
+function scaleFor(maxV) {
+  const raw = Math.max(maxV, 1) * 1.08, step = nice(raw / 4);
+  return { top: Math.ceil(raw / step) * step, step };
+}
+
+function ovData(scope) {
+  const rows = ROWS.filter(r => scope === "all" || r.in_core === "yes");
+  const decades = [...new Set(rows.map(r => +r.birth_decade))].filter(Boolean).sort((a, b) => a - b);
+  const by = decades.map(d => {
+    const rs = rows.filter(r => +r.birth_decade === d);
+    const g = {};
+    GENRES.forEach(G => {
+      const x = rs.filter(r => r.genre === G.key);
+      g[G.key] = { n: x.length, authors: new Set(x.map(r => r.author)).size,
+                   perm: x.filter(r => r.ip === "by_permission").length };
+    });
+    return { d, n: rs.length, authors: new Set(rs.map(r => r.author)).size, g,
+             perm: rs.filter(r => r.ip === "by_permission").length,
+             pd: rs.filter(r => r.ip === "public_domain").length,
+             cp: rs.filter(r => r.ip === "copyrighted").length };
+  });
+  return { rows, by };
+}
+
+function hideTip() { $("tip").hidden = true; }
+function showTip(info, ev, anchor) {
+  const tip = $("tip"); tip.textContent = "";
+  const h = document.createElement("div"); h.className = "tip-h"; h.textContent = info.title; tip.appendChild(h);
+  info.rows.forEach(r => {
+    const row = document.createElement("div"); row.className = "tip-r";
+    const k = document.createElement("span"); k.className = "key";
+    k.style.background = r.color || "transparent"; row.appendChild(k);
+    const v = document.createElement("strong"); v.textContent = r.value; row.appendChild(v);
+    const l = document.createElement("span"); l.className = "tip-l"; l.textContent = r.label; row.appendChild(l);
+    tip.appendChild(row);
+  });
+  tip.hidden = false;
+  let x, y;
+  if (ev && ev.type !== "focus" && ev.clientX != null) { x = ev.clientX; y = ev.clientY; }
+  else { const b = anchor.getBoundingClientRect(); x = b.left + b.width / 2; y = b.top + 24; }
+  const tw = tip.offsetWidth, th = tip.offsetHeight;
+  let left = x + 14; if (left + tw > innerWidth - 8) left = x - tw - 14;
+  let top = y - th - 10; if (top < 8) top = y + 16;
+  tip.style.left = Math.max(8, left) + "px"; tip.style.top = top + "px";
+}
+
+// Grouped columns, one band per decade. The whole band is the hover/focus
+// target and its tooltip lists every series, so nobody has to land on a
+// 16px bar. Thin bars, 4px rounded tips, square at the baseline, 2px gap.
+function columnChart(host, { decades, series, scale, fmt = v => v, target = null, labelAt = [], tip }) {
+  host.textContent = "";
+  const W = Math.max(host.clientWidth, 320), H = 236, M = { t: 18, r: 14, b: 26, l: 36 };
+  const pw = W - M.l - M.r, ph = H - M.t - M.b, base = M.t + ph;
+  const svg = svgEl("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}` }, host);
+  svg.style.direction = "ltr";
+  const y = v => base - (v / scale.top) * ph;
+  for (let v = 0; v <= scale.top + 1e-9; v += scale.step) {
+    svgEl("line", { x1: M.l, x2: W - M.r, y1: y(v), y2: y(v), class: v === 0 ? "axis" : "grid" }, svg);
+    const t = svgEl("text", { x: M.l - 6, y: y(v) + 4, "text-anchor": "end", class: "tick" }, svg);
+    t.textContent = fmt(v);
+  }
+  const band = pw / decades.length, n = series.length, gap = 2;
+  const bw = Math.max(4, Math.min(24, (band * 0.7 - gap * (n - 1)) / n));
+  const groupW = bw * n + gap * (n - 1);
+  const hover = svgEl("rect", { class: "hoverband", x: -999, y: M.t, width: band, height: ph }, svg);
+  if (target != null && target <= scale.top) {
+    svgEl("line", { x1: M.l, x2: W - M.r, y1: y(target), y2: y(target), class: "target" }, svg);
+    const t = svgEl("text", { x: W - M.r, y: y(target) - 5, "text-anchor": "end", class: "tick" }, svg);
+    t.textContent = "יעד " + target;
+  }
+  decades.forEach((d, i) => {
+    const x0 = M.l + i * band + (band - groupW) / 2;
+    series.forEach((s, j) => {
+      const v = s.values[i]; if (!v) return;
+      const x = x0 + j * (bw + gap), top = y(v), h = base - top, r = Math.min(4, h, bw / 2);
+      // a dimmed bar is a decade with too few works to read a trend from
+      svgEl("path", { fill: s.color, "fill-opacity": s.dim && s.dim[i] ? 0.35 : 1, d:
+        `M${x},${base} V${top + r} Q${x},${top} ${x + r},${top} H${x + bw - r} Q${x + bw},${top} ${x + bw},${top + r} V${base} Z` }, svg);
+      if (j === 0 && labelAt.includes(i)) {
+        const t = svgEl("text", { x: x + bw / 2, y: top - 5, "text-anchor": "middle", class: "vlabel" }, svg);
+        t.textContent = fmt(v);
+      }
+    });
+    const lab = svgEl("text", { x: M.l + i * band + band / 2, y: H - 8, "text-anchor": "middle", class: "tick" }, svg);
+    lab.textContent = d;
+    const info = tip(i);
+    const hit = svgEl("rect", { x: M.l + i * band, y: M.t, width: band, height: ph,
+                               fill: "transparent", tabindex: 0, class: "hit", "aria-label": info.aria }, svg);
+    const show = (ev) => { hover.setAttribute("x", M.l + i * band); showTip(info, ev, hit); };
+    const hide = () => { hover.setAttribute("x", -999); hideTip(); };
+    hit.addEventListener("pointerenter", show);
+    hit.addEventListener("pointermove", show);
+    hit.addEventListener("focus", show);
+    hit.addEventListener("pointerleave", hide);
+    hit.addEventListener("blur", hide);
+  });
+}
+
+function renderTiles(rows) {
+  const t = $("tiles"); t.textContent = "";
+  const n = rows.length;
+  const perm = rows.filter(r => r.ip === "by_permission").length;
+  [["יצירות", n.toLocaleString("he")],
+   ["שירים", rows.filter(r => r.genre === "שירה").length.toLocaleString("he")],
+   ["סיפורים", rows.filter(r => r.genre === "פרוזה").length.toLocaleString("he")],
+   ["מחברים שונים", new Set(rows.map(r => r.author)).size.toLocaleString("he")],
+   ["ברשות בעלי הזכויות", n ? Math.round(100 * perm / n) + "%" : "—"]].forEach(([label, value]) => {
+    const d = document.createElement("div"); d.className = "tile";
+    const l = document.createElement("div"); l.className = "l"; l.textContent = label;
+    const v = document.createElement("div"); v.className = "v"; v.textContent = value;
+    d.append(l, v); t.appendChild(d);
+  });
+}
+
+function renderTable(by) {
+  const tb = $("ovTable"); tb.textContent = "";
+  const head = ["עשור לידה", "שירים", "משוררים", "ברשות", "סיפורים", "מחברים", "ברשות", "סה\"כ", "מחברים שונים", "% ברשות"];
+  const sep = new Set([1, 4, 7]);
+  const thead = tb.createTHead().insertRow();
+  head.forEach((h, j) => { const th = document.createElement("th"); th.textContent = h; if (sep.has(j)) th.className = "gsep"; thead.appendChild(th); });
+  const body = tb.createTBody();
+  const line = (cells, row) => cells.forEach((c, j) => { const td = row.insertCell(); td.textContent = c; if (sep.has(j)) td.className = "gsep"; });
+  by.forEach(b => {
+    const P = b.g["שירה"], S = b.g["פרוזה"];
+    line([b.d + "s", P.n, P.authors, P.perm, S.n, S.authors, S.perm, b.n, b.authors,
+          b.n ? Math.round(100 * b.perm / b.n) + "%" : "—"], body.insertRow());
+  });
+  const rows = ROWS.filter(r => $("ovScope").value === "all" || r.in_core === "yes");
+  const gs = (g) => rows.filter(r => r.genre === g);
+  const P = gs("שירה"), S = gs("פרוזה");
+  const perm = (x) => x.filter(r => r.ip === "by_permission").length;
+  const au = (x) => new Set(x.map(r => r.author)).size;
+  line(["סה\"כ", P.length, au(P), perm(P), S.length, au(S), perm(S), rows.length, au(rows),
+        rows.length ? Math.round(100 * perm(rows) / rows.length) + "%" : "—"], tb.createTFoot().insertRow());
+}
+
+function renderOverview() {
+  const scope = $("ovScope").value;
+  const { rows, by } = ovData(scope);
+  renderTiles(rows);
+  const decades = by.map(b => b.d);
+  const core = scope === "core";
+  $("countSub").textContent = core
+    ? "בכל סט כל מחבר מופיע פעם אחת. קו היעד: 50 מחברים לכל ז'אנר בכל עשור; עשור שלא מגיע אליו מכיל את כל המחברים הזמינים."
+    : "כל היצירות שבחמשת הסטים.";
+
+  const cMax = Math.max(...by.flatMap(b => GENRES.map(G => b.g[G.key].n)), core ? 50 : 0);
+  columnChart($("chCount"), {
+    decades, scale: scaleFor(cMax), target: core ? 50 : null,
+    series: GENRES.map(G => ({ color: G.color, values: by.map(b => b.g[G.key].n) })),
+    tip: i => ({ title: `ילידי ${by[i].d}s`,
+                 rows: GENRES.map(G => ({ color: G.color, value: by[i].g[G.key].n, label: G.label })),
+                 aria: `ילידי ${by[i].d}: ` + GENRES.map(G => `${by[i].g[G.key].n} ${G.label}`).join(", ") }),
+  });
+
+  const aMax = Math.max(...by.flatMap(b => GENRES.map(G => b.g[G.key].authors)));
+  columnChart($("chAuth"), {
+    decades, scale: scaleFor(aMax),
+    series: GENRES.map(G => ({ color: G.color, values: by.map(b => b.g[G.key].authors) })),
+    tip: i => ({ title: `ילידי ${by[i].d}s`,
+                 rows: [...GENRES.map(G => ({ color: G.color, value: by[i].g[G.key].authors,
+                                              label: G.key === "שירה" ? "משוררים" : "מחברי פרוזה" })),
+                        { value: by[i].authors, label: "מחברים שונים בסך הכל" }],
+                 aria: `ילידי ${by[i].d}: ${by[i].g["שירה"].authors} משוררים, ${by[i].g["פרוזה"].authors} מחברי פרוזה` }),
+  });
+
+  // Percentages over a handful of works swing wildly (one work of three is
+  // 33%), so decades under 50 works are dimmed and named, and the direct
+  // labels go on the first and last decades that are large enough to trust.
+  const thin = by.map(b => b.n < 50);
+  const solid = by.map((b, i) => i).filter(i => !thin[i]);
+  const thinNames = by.filter((b, i) => thin[i]).map(b => b.d + "s");
+  $("permSub").textContent = "השאר נחלת הכלל או מוגנות. ככל שהעשור מאוחר יותר, יותר יצירות תלויות ברשות." +
+    (thinNames.length ? ` בגוון בהיר: עשורים עם פחות מ-50 יצירות (${thinNames.join(", ")}). האחוז שם מבוסס על מעט יצירות ולא כדאי לקרוא ממנו מגמה.` : "");
+  columnChart($("chPerm"), {
+    decades, scale: { top: 100, step: 25 }, fmt: v => Math.round(v) + "%",
+    labelAt: solid.length ? [solid[0], solid[solid.length - 1]] : [],
+    series: [{ color: "var(--s-perm)", values: by.map(b => b.n ? 100 * b.perm / b.n : 0), dim: thin }],
+    tip: i => ({ title: `ילידי ${by[i].d}s`,
+                 rows: [{ color: "var(--s-perm)", value: (by[i].n ? Math.round(100 * by[i].perm / by[i].n) : 0) + "%", label: "ברשות" },
+                        { value: `${by[i].perm} מתוך ${by[i].n}`, label: "יצירות ברשות" },
+                        { value: by[i].pd, label: "נחלת הכלל" },
+                        { value: by[i].cp, label: "מוגנות" }],
+                 aria: `ילידי ${by[i].d}: ${by[i].perm} מתוך ${by[i].n} ברשות` }),
+  });
+  renderTable(by);
+}
+
+function setView(v) {
+  const ov = v === "overview";
+  $("overview").hidden = !ov;
+  document.querySelector("main").hidden = ov;
+  $("browseBar").hidden = ov;
+  document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.view === v));
+  store("by_view", v);
+  hideTip();
+  if (ov) renderOverview();
+}
+
+document.addEventListener("keydown", (e) => {
+  if (!$("overview").hidden) return;
+  if (["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName)) return;
+  if (e.key === "ArrowDown" || e.key === "j") { e.preventDefault(); select(Math.min(CUR + 1, VIEW.length - 1)); }
+  else if (e.key === "ArrowUp" || e.key === "k") { e.preventDefault(); select(Math.max(CUR - 1, 0)); }
+  else if (e.key === "x" && VIEW[CUR]) toggleMark(VIEW[CUR]);
+});
+
+function setChrome(on) {
+  document.querySelector(".tabs").hidden = !on;
+  $("browseBar").hidden = !on;
+  document.querySelector("main").hidden = !on;
+  if (!on) $("overview").hidden = true;
+}
+
+// Takes the folder's files as the browser hands them over (each with a
+// webkitRelativePath like "corpus_v1/texts/poem_1880_1.txt"). The chosen folder
+// may be the corpus folder or anything above it, so anchor on the shallowest
+// selection.csv and read every path relative to it.
+async function loadFromFiles(files) {
+  const sel = files.filter(f => (f.webkitRelativePath || "").split("/").pop() === "selection.csv")
+                   .sort((a, b) => a.webkitRelativePath.length - b.webkitRelativePath.length)[0];
+  if (!sel) {
+    $("pickMsg").textContent = files.length && !files[0].webkitRelativePath
+      ? "נראה שנבחרו קבצים בודדים ולא תיקייה. לחצו שוב ובחרו את התיקייה כולה."
+      : "לא מצאתי בתיקייה הזאת את הקובץ selection.csv. בחרו את התיקייה שנוצרה כשפרסתם את קובץ ה-zip.";
+    return false;
+  }
+  const prefix = sel.webkitRelativePath.slice(0, -"selection.csv".length);
+  LOCAL = new Map();
+  files.forEach(f => {
+    if (f.webkitRelativePath.startsWith(prefix)) LOCAL.set(f.webkitRelativePath.slice(prefix.length), f);
+  });
+  $("pickerScreen").hidden = true;
+  setChrome(true);
+  await start(await sel.text());
+  return true;
+}
+
+function showPicker() {
+  setChrome(false);
+  $("pickerScreen").hidden = false;
+  $("dirInput").onchange = (e) => loadFromFiles([...e.target.files]);
+}
+
+async function init() {
+  show = recall("by_show", show);
+  const fs = recall("by_fs", 18); document.documentElement.style.setProperty("--fs", fs + "px");
+  const selText = await readPath(FILES.sel);
+  if (selText == null) { showPicker(); return; }
+  await start(selText);
+}
+
+async function start(selText) {
+  ROWS = parseCSV(selText);
+  // the manual file already on disk counts as marks, so an export never drops them
+  marks = recall("by_marks", {});
+  const man = await readPath(FILES.manual);
+  if (man) parseCSV(man).forEach(m => {
+    if (m.id && !marks[m.id]) marks[m.id] = { reason: m.reason || "", note: m.note || "" };
+  });
+  const ver = await readPath("VERSION.txt");
+  if (ver) $("ver").textContent = "גרסת קורפוס " + ver.trim();
+  fillSelect("fGenre", ROWS.map(r => r.genre));
+  fillSelect("fDecade", ROWS.map(r => r.birth_decade), v => v + "s");
+  fillSelect("fSource", ROWS.map(r => r.source), srcLabel);
+  fillSelect("fWhy", ROWS.map(r => (r.excluded_by || "").split(":")[0]), whyLabel);
+  ["q", "fGenre", "fDecade", "fCore", "fSource", "fWhy", "fMarked"].forEach(id =>
+    $(id).addEventListener(id === "q" ? "input" : "change", () => { CUR = -1; applyFilters(); }));
+  $("rows").addEventListener("click", (e) => { const tr = e.target.closest("tr"); if (tr) select(+tr.dataset.i, false); });
+  document.querySelectorAll("thead th").forEach(th => th.onclick = () => {
+    SORT = { k: th.dataset.k, dir: SORT.k === th.dataset.k ? -SORT.dir : 1 }; applyFilters();
+  });
+  $("export").onclick = exportMarks;
+  applyFilters();
+  if (VIEW.length) select(0);
+
+  document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => setView(b.dataset.view));
+  $("ovScope").onchange = renderOverview;
+  let rt;
+  addEventListener("resize", () => {
+    clearTimeout(rt);
+    rt = setTimeout(() => { if (!$("overview").hidden) renderOverview(); }, 150);
+  });
+  setView(location.hash === "#overview" ? "overview" : recall("by_view", "browse"));
+}
+init();
+</script>
+</body>
+</html>
