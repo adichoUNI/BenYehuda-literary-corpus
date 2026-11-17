@@ -253,7 +253,11 @@ const LAYERS = [
 let ROWS = [], VIEW = [], CUR = -1, SORT = { k: null, dir: 1 };
 // short Hebrew labels for the coded columns; the CSV keeps the codes
 const SRC = { benyehuda_pd: "נחלת הכלל", benyehuda_permission: "ברשות",
-              benyehuda_copyrighted: "מוגן", benyehuda_orphan: "יצירה יתומה", benyehuda_other: "אחר" };
+              benyehuda_copyrighted: "מוגן", benyehuda_orphan: "יצירה יתומה", benyehuda_other: "אחר",
+              pardes: "הוצאת פרדס", granta: "גרנטה" };
+// where the full text can be read when it is not published here
+const READ_AT = { pardes: "", granta: "בגרנטה" };
+const readAt = r => r.source in READ_AT ? READ_AT[r.source] : "בבן יהודה";
 const WHY = { other_sets: "בסט חלופי", juvenile: "כתיבה לילדים", paratext: "פרא־טקסט", over_length: "ארוך מדי",
               surplus: "עודף", manual: "ידני" };
 const srcLabel = (s) => SRC[s] || s || "";
@@ -388,9 +392,10 @@ async function select(i, scroll = true) {
   $("detail").innerHTML = `
     <div id="meta">
       <h2>${esc(r.title)}</h2>
-      <div class="sub">${esc(r.author)} · נולד ${esc(r.birth)} · ${esc(r.genre)} · ${esc(r.birth_decade)}s
-        · ${esc(r.words_clean || r.words)} מילים${date ? " · " + esc(date) : ""}
-        · <a href="${esc(r.url)}" target="_blank" rel="noopener">בבן יהודה ↗</a></div>
+      <div class="sub">${esc(r.author)} · נולד ${esc(r.birth)}${r.birth_status === "to_check" ? " (שנת הלידה בבדיקה)" : ""}
+        · ${esc(r.genre)} · ${esc(r.birth_decade)}s
+        · ${esc(r.words_clean || r.words)} מילים${date ? " · " + esc(date) : ""}${r.book ? " · מתוך " + esc(r.book) : ""}
+        ${r.url ? `· <a href="${esc(r.url)}" target="_blank" rel="noopener">${readAt(r)} ↗</a>` : ""}</div>
       <div class="chips">${flags.join("")}</div>
       <div class="row">
         <button class="mark ${m ? "on" : ""}" id="markBtn">${m ? "מסומן להוצאה ✓" : "סמני להוצאה"} <kbd>x</kbd></button>
@@ -421,10 +426,19 @@ async function select(i, scroll = true) {
   if (r.text_public === "no") {
     // works shown in Ben-Yehuda by permission of the rights holders: metadata and a link only
     panes.style.gridTemplateColumns = "1fr";
-    panes.innerHTML = `<div class="pane"><h3>הטקסט אינו מוצג כאן</h3><pre>היצירה מופיעה בפרויקט בן־יהודה ברשות בעלי הזכויות,
+    const why = r.source === "pardes"
+      ? `היצירה נכללת בקורפוס המחקרי ברשות הוצאת פרדס, מתוך הספר "${esc(r.book)}",
+ולכן הטקסט שלה אינו מפורסם בקורפוס הציבורי.`
+      : r.source === "granta"
+      ? `היצירה פורסמה במהדורה המקוונת של גרנטה, וכל הזכויות בה שמורות,
 ולכן הטקסט שלה אינו מפורסם בקורפוס הציבורי.
 
-לקריאה בבן־יהודה: <a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.url)}</a></pre></div>`;
+לקריאה בגרנטה: <a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.url)}</a>`
+      : `היצירה מופיעה בפרויקט בן־יהודה ברשות בעלי הזכויות,
+ולכן הטקסט שלה אינו מפורסם בקורפוס הציבורי.
+
+לקריאה בבן־יהודה: <a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.url)}</a>`;
+    panes.innerHTML = `<div class="pane"><h3>הטקסט אינו מוצג כאן</h3><pre>${why}</pre></div>`;
     return;
   }
   const layers = LAYERS.filter(L => show[L.key]);
