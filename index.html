@@ -23,11 +23,13 @@
   }
   :root {
     --s-poem: #2a78d6; --s-prose: #eb6834; --s-perm: #6250d6;
+    --s-pd: #2f9e6e; --s-pardes: #c2410c; --s-granta: #b8860b;
     --grid: #ecebe7; --axis: #c3c2b7;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --s-poem: #3987e5; --s-prose: #d95926; --s-perm: #9085e9;
+      --s-pd: #4cc08c; --s-pardes: #f07a3e; --s-granta: #e0b341;
       --grid: #2c2c30; --axis: #45454a;
     }
   }
@@ -176,6 +178,7 @@
   <select id="fSource"><option value="">כל המקורות</option></select>
   <select id="fWhy"><option value="">כל הסיבות</option></select>
   <label><input type="checkbox" id="fMarked"> רק מסומנים</label>
+  <label title="מחברים ששנת הלידה שלהם עוד לא אומתה"><input type="checkbox" id="fCheck"> רק שנות לידה לבדיקה</label>
   <button class="primary" id="export" title="מוריד manual_exclusions.csv הכולל את כל הסימונים">ייצוא סימונים (<span id="nMarks">0</span>)</button>
   <span id="count"></span>
   </div>
@@ -229,7 +232,8 @@
       <div class="chart" id="chAuth"></div>
     </div>
     <div class="card wide">
-      <h3>שיעור היצירות שנכנסו ברשות בעלי הזכויות</h3>
+      <h3>תמהיל המקורות בכל עשור לידה</h3>
+      <div class="legend" id="srcLegend"></div>
       <p class="sub" id="permSub"></p>
       <div class="chart" id="chPerm"></div>
     </div>
@@ -252,9 +256,17 @@ const LAYERS = [
 ];
 let ROWS = [], VIEW = [], CUR = -1, SORT = { k: null, dir: 1 };
 // short Hebrew labels for the coded columns; the CSV keeps the codes
-const SRC = { benyehuda_pd: "נחלת הכלל", benyehuda_permission: "ברשות",
-              benyehuda_copyrighted: "מוגן", benyehuda_orphan: "יצירה יתומה", benyehuda_other: "אחר",
-              pardes: "הוצאת פרדס", granta: "גרנטה" };
+const SRC = { benyehuda_pd: "בן-יהודה (נחלת הכלל)", benyehuda_permission: "בן-יהודה (ברשות)",
+              benyehuda_copyrighted: "בן-יהודה (מוגן)", benyehuda_orphan: "בן-יהודה (יתומה)", benyehuda_other: "בן-יהודה (אחר)",
+              pardes: "הוצאת פרדס", granta: "גרנטה (מקוון)" };
+// source groups for the overview mix; Ben-Yehuda copyrighted/orphan go with "by permission"
+const SGROUPS = [
+  { key: "pd", label: "בן-יהודה, נחלת הכלל", color: "var(--s-pd)", test: r => r.source === "benyehuda_pd" },
+  { key: "perm", label: "בן-יהודה, ברשות", color: "var(--s-perm)",
+    test: r => r.source.startsWith("benyehuda_") && r.source !== "benyehuda_pd" },
+  { key: "pardes", label: "הוצאת פרדס", color: "var(--s-pardes)", test: r => r.source === "pardes" },
+  { key: "granta", label: "גרנטה", color: "var(--s-granta)", test: r => r.source === "granta" },
+];
 // where the full text can be read when it is not published here
 const READ_AT = { pardes: "", granta: "בגרנטה" };
 const readAt = r => r.source in READ_AT ? READ_AT[r.source] : "בבן יהודה";
@@ -318,12 +330,12 @@ function fillSelect(id, values, label = v => v) {
 function applyFilters() {
   const q = $("q").value.trim();
   const g = $("fGenre").value, d = $("fDecade").value, c = $("fCore").value;
-  const s = $("fSource").value, w = $("fWhy").value, m = $("fMarked").checked;
+  const s = $("fSource").value, w = $("fWhy").value, m = $("fMarked").checked, bc = $("fCheck").checked;
   VIEW = ROWS.filter(r =>
     (!q || (r.author || "").includes(q) || (r.title || "").includes(q) || r.id === q) &&
     (!g || r.genre === g) && (!d || r.birth_decade === d) && (!c || r.in_core === c) &&
     (!s || r.source === s) && (!w || (r.excluded_by || "").split(":")[0] === w) &&
-    (!m || marks[r.id]));
+    (!m || marks[r.id]) && (!bc || r.birth_status === "to_check"));
   if (SORT.k) {
     const k = SORT.k, num = ["birth", "birth_decade", "words_clean"].includes(k);
     VIEW.sort((a, b) => (num ? (+a[k] || 0) - (+b[k] || 0) : String(a[k]).localeCompare(String(b[k]), "he")) * SORT.dir);
@@ -342,7 +354,7 @@ function render() {
     if (i === CUR) tr.classList.add("on");
     const cells = [
       `<span class="dot ${r.in_core === "yes" ? "core" : ""}" title="${r.in_core === "yes" ? "בסט הראשי" : "בסט חלופי"}"></span>`,
-      r.genre, r.birth_decade + "s", r.author, `<span class="num">${r.birth}</span>`,
+      r.genre, r.birth_decade + "s", r.author, `<span class="num">${r.birth}</span>${r.birth_status === "to_check" ? ' <span title="שנת הלידה בבדיקה" style="color:#b45309;font-weight:bold">?</span>' : ""}`,
       null, `<span class="num">${r.words_clean || r.words}</span>`,
       srcLabel(r.source), whyLabel(r.excluded_by)
     ];
@@ -525,7 +537,8 @@ function ovData(scope) {
       g[G.key] = { n: x.length, authors: new Set(x.map(r => r.author)).size,
                    perm: x.filter(r => r.ip === "by_permission").length };
     });
-    return { d, n: rs.length, authors: new Set(rs.map(r => r.author)).size, g,
+    const src = {}; SGROUPS.forEach(S => { src[S.key] = rs.filter(S.test).length; });
+    return { d, n: rs.length, authors: new Set(rs.map(r => r.author)).size, g, src,
              perm: rs.filter(r => r.ip === "by_permission").length,
              pd: rs.filter(r => r.ip === "public_domain").length,
              cp: rs.filter(r => r.ip === "copyrighted").length };
@@ -625,8 +638,9 @@ function renderTiles(rows) {
 
 function renderTable(by) {
   const tb = $("ovTable"); tb.textContent = "";
-  const head = ["עשור לידה", "שירים", "משוררים", "ברשות", "סיפורים", "מחברים", "ברשות", "סה\"כ", "מחברים שונים", "% ברשות"];
-  const sep = new Set([1, 4, 7]);
+  const head = ["עשור לידה", "שירים", "משוררים", "ברשות", "סיפורים", "מחברים", "ברשות", "סה\"כ", "מחברים שונים",
+                ...SGROUPS.map(S => S.label)];
+  const sep = new Set([1, 4, 7, 9]);
   const thead = tb.createTHead().insertRow();
   head.forEach((h, j) => { const th = document.createElement("th"); th.textContent = h; if (sep.has(j)) th.className = "gsep"; thead.appendChild(th); });
   const body = tb.createTBody();
@@ -634,7 +648,7 @@ function renderTable(by) {
   by.forEach(b => {
     const P = b.g["שירה"], S = b.g["פרוזה"];
     line([b.d + "s", P.n, P.authors, P.perm, S.n, S.authors, S.perm, b.n, b.authors,
-          b.n ? Math.round(100 * b.perm / b.n) + "%" : "—"], body.insertRow());
+          ...SGROUPS.map(G => b.src[G.key])], body.insertRow());
   });
   const rows = ROWS.filter(r => $("ovScope").value === "all" || r.in_core === "yes");
   const gs = (g) => rows.filter(r => r.genre === g);
@@ -642,7 +656,7 @@ function renderTable(by) {
   const perm = (x) => x.filter(r => r.ip === "by_permission").length;
   const au = (x) => new Set(x.map(r => r.author)).size;
   line(["סה\"כ", P.length, au(P), perm(P), S.length, au(S), perm(S), rows.length, au(rows),
-        rows.length ? Math.round(100 * perm(rows) / rows.length) + "%" : "—"], tb.createTFoot().insertRow());
+        ...SGROUPS.map(G => rows.filter(G.test).length)], tb.createTFoot().insertRow());
 }
 
 function renderOverview() {
@@ -681,18 +695,17 @@ function renderOverview() {
   const thin = by.map(b => b.n < 50);
   const solid = by.map((b, i) => i).filter(i => !thin[i]);
   const thinNames = by.filter((b, i) => thin[i]).map(b => b.d + "s");
-  $("permSub").textContent = "השאר נחלת הכלל או מוגנות. ככל שהעשור מאוחר יותר, יותר יצירות תלויות ברשות." +
+  $("srcLegend").innerHTML = SGROUPS.map(S => `<span><i style="background:${S.color}"></i>${S.label}</span>`).join("");
+  $("permSub").textContent = "חלקו של כל מקור מתוך היצירות של העשור. הטקסט המלא מוצג רק ליצירות בנחלת הכלל." +
     (thinNames.length ? ` בגוון בהיר: עשורים עם פחות מ-50 יצירות (${thinNames.join(", ")}). האחוז שם מבוסס על מעט יצירות ולא כדאי לקרוא ממנו מגמה.` : "");
   columnChart($("chPerm"), {
     decades, scale: { top: 100, step: 25 }, fmt: v => Math.round(v) + "%",
     labelAt: solid.length ? [solid[0], solid[solid.length - 1]] : [],
-    series: [{ color: "var(--s-perm)", values: by.map(b => b.n ? 100 * b.perm / b.n : 0), dim: thin }],
-    tip: i => ({ title: `ילידי ${by[i].d}s`,
-                 rows: [{ color: "var(--s-perm)", value: (by[i].n ? Math.round(100 * by[i].perm / by[i].n) : 0) + "%", label: "ברשות" },
-                        { value: `${by[i].perm} מתוך ${by[i].n}`, label: "יצירות ברשות" },
-                        { value: by[i].pd, label: "נחלת הכלל" },
-                        { value: by[i].cp, label: "מוגנות" }],
-                 aria: `ילידי ${by[i].d}: ${by[i].perm} מתוך ${by[i].n} ברשות` }),
+    series: SGROUPS.map(S => ({ color: S.color, values: by.map(b => b.n ? 100 * b.src[S.key] / b.n : 0), dim: thin })),
+    tip: i => ({ title: `ילידי ${by[i].d}s · ${by[i].n} יצירות`,
+                 rows: SGROUPS.map(S => ({ color: S.color, label: S.label,
+                   value: `${by[i].src[S.key]} (${by[i].n ? Math.round(100 * by[i].src[S.key] / by[i].n) : 0}%)` })),
+                 aria: `ילידי ${by[i].d}: ` + SGROUPS.map(S => `${by[i].src[S.key]} ${S.label}`).join(", ") }),
   });
   renderTable(by);
 }
@@ -775,7 +788,7 @@ async function start(selText) {
   fillSelect("fDecade", ROWS.map(r => r.birth_decade), v => v + "s");
   fillSelect("fSource", ROWS.map(r => r.source), srcLabel);
   fillSelect("fWhy", ROWS.map(r => (r.excluded_by || "").split(":")[0]), whyLabel);
-  ["q", "fGenre", "fDecade", "fCore", "fSource", "fWhy", "fMarked"].forEach(id =>
+  ["q", "fGenre", "fDecade", "fCore", "fSource", "fWhy", "fMarked", "fCheck"].forEach(id =>
     $(id).addEventListener(id === "q" ? "input" : "change", () => { CUR = -1; applyFilters(); }));
   $("rows").addEventListener("click", (e) => { const tr = e.target.closest("tr"); if (tr) select(+tr.dataset.i, false); });
   document.querySelectorAll("thead th").forEach(th => th.onclick = () => {
